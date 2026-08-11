@@ -28,7 +28,13 @@ async function timedFetch(url: string): Promise<{ data: any; responseTimeMs: num
   const res = await fetch(url, { cache: 'no-store' });
   const responseTimeMs = Math.round(performance.now() - start);
   if (!res.ok) {
-    throw new Error(`Google Books responded with ${res.status}`);
+    // Google rate-limits key-less requests by IP; surface a friendly message.
+    if (res.status === 429) {
+      throw new Error(
+        'Google Books is rate-limiting requests right now. Please try again in a moment.'
+      );
+    }
+    throw new Error(`Google Books responded with ${res.status}.`);
   }
   const data = await res.json();
   return { data, responseTimeMs };
