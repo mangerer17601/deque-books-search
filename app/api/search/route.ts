@@ -23,21 +23,40 @@ function buildUrl(query: string, startIndex: number, maxResults: number): string
  * Fetches from Google Books while measuring the upstream round-trip time so we
  * can report a real "server response time" to the client.
  */
+// Transient upstream statuses worth retrying (Google Books intermittently
+// returns 5xx / 429 for individual requests even when the API is healthy).
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function timedFetch(url: string): Promise<{ data: any; responseTimeMs: number }> {
-  const start = performance.now();
-  const res = await fetch(url, { cache: 'no-store' });
-  const responseTimeMs = Math.round(performance.now() - start);
-  if (!res.ok) {
-    // Google rate-limits key-less requests by IP; surface a friendly message.
-    if (res.status === 429) {
-      throw new Error(
-        'Google Books is rate-limiting requests right now. Please try again in a moment.'
-      );
+  let lastStatus = 0;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const start = performance.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    const responseTimeMs = Math.round(performance.now() - start);
+
+    if (res.ok) {
+      const data = await res.json();
+      return { data, responseTimeMs };
     }
-    throw new Error(`Google Books responded with ${res.status}.`);
+
+    lastStatus = res.status;
+    if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS) {
+      await sleep(250 * attempt); // 250ms, then 500ms backoff
+      continue;
+    }
+    break;
   }
-  const data = await res.json();
-  return { data, responseTimeMs };
+
+  if (lastStatus === 429) {
+    throw new Error(
+      'Google Books is rate-limiting requests right now. Please try again in a moment.'
+    );
+  }
+  throw new Error(`Google Books responded with ${lastStatus}.`);
 }
 
 export async function GET(request: NextRequest) {
