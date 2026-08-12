@@ -2,7 +2,7 @@
 
 An accessible book search app built on the [Google Books API](https://developers.google.com/books). Built with **Next.js (App Router) + TypeScript** and deployed on **Vercel**.
 
-> **Live demo:** _added after deployment_
+> **Live demo:** https://deque-books-search.vercel.app
 
 This is Challenge 1 of the Deque Solutions Engineer take-home.
 
