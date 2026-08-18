@@ -18,6 +18,27 @@ interface AggregateResponse extends Aggregates {
   error?: string;
 }
 
+/**
+ * Fetches JSON with a silent client-side retry. Combined with the server
+ * route's own retry loop, this makes a user-visible error from a transient
+ * Google Books hiccup extremely unlikely.
+ */
+async function fetchJson<T>(url: string, tries = 2): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url);
+      const data = (await res.json()) as T & { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || 'Request failed.');
+      return data;
+    } catch (err) {
+      lastError = err;
+      if (i < tries - 1) await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+  }
+  throw lastError;
+}
+
 export default function Home() {
   const [query, setQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
@@ -34,11 +55,9 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const data = await fetchJson<PageResponse>(
         `/api/search?q=${encodeURIComponent(q)}&startIndex=${start}`
       );
-      const data: PageResponse = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Search failed.');
       setItems(data.items);
       setTotalItems(data.totalItems);
       setStartIndex(data.startIndex);
@@ -54,11 +73,10 @@ export default function Home() {
 
   const fetchAggregates = useCallback(async (q: string) => {
     try {
-      const res = await fetch(
+      const data = await fetchJson<AggregateResponse>(
         `/api/search?q=${encodeURIComponent(q)}&aggregate=1`
       );
-      const data: AggregateResponse = await res.json();
-      setAggregates(res.ok && !data.error ? data : null);
+      setAggregates(data);
     } catch {
       setAggregates(null);
     }

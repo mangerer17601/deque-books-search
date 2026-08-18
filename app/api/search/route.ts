@@ -26,7 +26,7 @@ function buildUrl(query: string, startIndex: number, maxResults: number): string
 // Transient upstream statuses worth retrying (Google Books intermittently
 // returns 5xx / 429 for individual requests even when the API is healthy).
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 6;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
