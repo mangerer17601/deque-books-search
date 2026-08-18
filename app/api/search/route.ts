@@ -26,29 +26,43 @@ function buildUrl(query: string, startIndex: number, maxResults: number): string
 // Transient upstream statuses worth retrying (Google Books intermittently
 // returns 5xx / 429 for individual requests even when the API is healthy).
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 5;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function timedFetch(url: string): Promise<{ data: any; responseTimeMs: number }> {
   let lastStatus = 0;
+  let networkError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const start = performance.now();
-    const res = await fetch(url, { cache: 'no-store' });
-    const responseTimeMs = Math.round(performance.now() - start);
+    try {
+      const start = performance.now();
+      const res = await fetch(url, { cache: 'no-store' });
+      const responseTimeMs = Math.round(performance.now() - start);
 
-    if (res.ok) {
-      const data = await res.json();
-      return { data, responseTimeMs };
-    }
+      if (res.ok) {
+        const data = await res.json();
+        return { data, responseTimeMs };
+      }
 
-    lastStatus = res.status;
-    if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS) {
-      await sleep(250 * attempt); // 250ms, then 500ms backoff
-      continue;
+      lastStatus = res.status;
+      if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS) {
+        await sleep(300 * attempt); // 0.3s, 0.6s, 0.9s, 1.2s backoff
+        continue;
+      }
+      break;
+    } catch (err) {
+      // Also retry transient network/connection failures.
+      networkError = err;
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(300 * attempt);
+        continue;
+      }
     }
-    break;
+  }
+
+  if (lastStatus === 0 && networkError) {
+    throw new Error('Could not reach Google Books. Please try again in a moment.');
   }
 
   if (lastStatus === 429) {
